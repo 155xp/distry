@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/exec"
@@ -36,7 +37,8 @@ func submit(server, source string) error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("coordinator returned %s", resp.Status)
+		message, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("coordinator returned %s: %s", resp.Status, message)
 	}
 	var status JobStatus
 	json.NewDecoder(resp.Body).Decode(&status)

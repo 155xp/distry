@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -49,6 +50,7 @@ func runModule(module string, args ...string) (string, error) {
 	defer cancel()
 	var output cappedBuffer
 	cmd := exec.CommandContext(ctx, "wasmtime", append([]string{"run", "-W", "max-memory-size=268435456", "-W", "timeout=600s", module}, args...)...)
+	cmd.Env = append(os.Environ(), "HOME=/tmp")
 	cmd.Stdout, cmd.Stderr = &output, &output
 	err := cmd.Run()
 	return strings.TrimSpace(output.String()), err
