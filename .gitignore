@@ -1,4 +1,5 @@
 .env
 .railway/
+.DS_Store
 distry
 *.wasm
