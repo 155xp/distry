@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
@@ -20,15 +21,20 @@ func (b *cappedBuffer) Write(p []byte) (int, error) {
 }
 
 type Work struct {
-	JobID string   `json:"job_id"`
-	ID    int      `json:"id"`
-	Args  []string `json:"args"`
+	JobID      string    `json:"job_id"`
+	ID         int       `json:"id"`
+	Args       []string  `json:"args"`
+	LeaseID    string    `json:"lease_id"`
+	LeaseUntil time.Time `json:"lease_until"`
+	Attempt    int       `json:"attempt"`
 }
 
 type Result struct {
-	JobID  string `json:"job_id"`
-	WorkID int    `json:"work_id"`
-	Output string `json:"output"`
+	JobID   string `json:"job_id"`
+	WorkID  int    `json:"work_id"`
+	LeaseID string `json:"lease_id"`
+	Output  string `json:"output"`
+	Error   string `json:"error,omitempty"`
 }
 
 type Job struct {
@@ -45,12 +51,13 @@ type JobStatus struct {
 	Results   []string `json:"results,omitempty"`
 }
 
-func runModule(module string, args ...string) (string, error) {
+func runModule(module string, stdin io.Reader, args ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 	var output cappedBuffer
 	cmd := exec.CommandContext(ctx, "wasmtime", append([]string{"run", "-W", "max-memory-size=268435456", "-W", "timeout=600s", module}, args...)...)
 	cmd.Env = append(os.Environ(), "HOME=/tmp")
+	cmd.Stdin = stdin
 	cmd.Stdout, cmd.Stderr = &output, &output
 	err := cmd.Run()
 	return strings.TrimSpace(output.String()), err

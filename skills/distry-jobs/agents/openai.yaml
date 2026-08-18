@@ -1,0 +1,4 @@
+interface:
+  display_name: "Write Distry Jobs"
+  short_description: "Create safe distributed Go workloads"
+  default_prompt: "Use $distry-jobs to turn this computation into a Distry job."

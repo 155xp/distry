@@ -6,12 +6,15 @@ A simple Go distributed computing network.
 
 ## Job format
 
-A job is a Go program with two commands:
+A job is a Go program with three commands:
 
 - `split` prints a JSON array of argument arrays.
 - `run <args...>` computes one chunk and prints its result.
+- `merge` reads the ordered JSON result array from stdin and prints the final answer.
 
 See `examples/sum.go`.
+
+Agents can use `skills/distry-jobs/SKILL.md` for the full job-authoring contract.
 
 ## Run locally
 

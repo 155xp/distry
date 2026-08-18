@@ -43,19 +43,21 @@ func startWorker(server string) {
 		module := modules[work.JobID]
 		if module == "" {
 			module, err = downloadModule(server, work.JobID)
-			if err != nil {
-				fmt.Println("download failed:", err)
-				continue
+			if err == nil {
+				modules[work.JobID] = module
 			}
-			modules[work.JobID] = module
 		}
 		fmt.Printf("job %s chunk %d\n", work.JobID, work.ID)
-		output, err := runModule(module, append([]string{"run"}, work.Args...)...)
-		if err != nil {
-			fmt.Println("job failed:", err, output)
-			continue
+		var output string
+		if err == nil {
+			output, err = runModule(module, nil, append([]string{"run"}, work.Args...)...)
 		}
-		body, _ := json.Marshal(Result{JobID: work.JobID, WorkID: work.ID, Output: output})
+		result := Result{JobID: work.JobID, WorkID: work.ID, LeaseID: work.LeaseID, Output: output}
+		if err != nil {
+			fmt.Println("job failed:", err)
+			result.Error = err.Error()
+		}
+		body, _ := json.Marshal(result)
 		resp, err = http.Post(server+"/result", "application/json", bytes.NewReader(body))
 		if err == nil {
 			resp.Body.Close()

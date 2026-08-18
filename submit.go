@@ -57,8 +57,11 @@ func submit(server, source string) error {
 		fmt.Printf("progress: %d/%d\r", status.Completed, status.Total)
 	}
 	fmt.Println()
-	for i, result := range status.Results {
-		fmt.Printf("%d: %s\n", i, result)
+	results, _ := json.Marshal(status.Results)
+	output, err := runModule(file.Name(), bytes.NewReader(results), "merge")
+	if err != nil {
+		return fmt.Errorf("merge failed: %s", output)
 	}
+	fmt.Println(output)
 	return nil
 }

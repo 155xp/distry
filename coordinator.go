@@ -14,14 +14,9 @@ import (
 	"time"
 )
 
-type Assignment struct {
-	Work      Work
-	StartedAt time.Time
-}
-
 var (
 	workQueue  = make(chan Work, 10_000)
-	inProgress = make(map[string]Assignment)
+	inProgress = make(map[string]Work)
 	jobs       = make(map[string]*Job)
 	mu         sync.Mutex
 )
@@ -68,15 +63,13 @@ func createJob(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "not a wasm module", 400)
 		return
 	}
-	output, err := runModule(module.Name(), "split")
+	output, err := runModule(module.Name(), nil, "split")
 	var chunks [][]string
 	if err != nil || json.Unmarshal([]byte(output), &chunks) != nil || len(chunks) > cap(workQueue) {
 		http.Error(w, "split failed: "+output, 400)
 		return
 	}
-	idBytes := make([]byte, 8)
-	rand.Read(idBytes)
-	id := hex.EncodeToString(idBytes)
+	id := newID()
 	mu.Lock()
 	jobs[id] = &Job{Module: data, Total: len(chunks), Results: make(map[int]string)}
 	mu.Unlock()
@@ -110,8 +103,9 @@ func getJob(w http.ResponseWriter, r *http.Request) {
 func giveWork(w http.ResponseWriter, _ *http.Request) {
 	select {
 	case work := <-workQueue:
+		work.LeaseID, work.LeaseUntil, work.Attempt = newID(), time.Now().Add(11*time.Minute), work.Attempt+1
 		mu.Lock()
-		inProgress[work.JobID+"/"+strconv.Itoa(work.ID)] = Assignment{work, time.Now()}
+		inProgress[work.JobID+"/"+strconv.Itoa(work.ID)] = work
 		mu.Unlock()
 		writeJSON(w, work)
 	default:
@@ -144,21 +138,39 @@ func receiveResult(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unknown work", 404)
 		return
 	}
-	delete(inProgress, result.JobID+"/"+strconv.Itoa(result.WorkID))
+	key := result.JobID + "/" + strconv.Itoa(result.WorkID)
+	work, ok := inProgress[key]
+	if !ok || result.LeaseID != work.LeaseID || time.Now().After(work.LeaseUntil) {
+		http.Error(w, "invalid or expired lease", http.StatusConflict)
+		return
+	}
+	delete(inProgress, key)
+	if result.Error != "" {
+		workQueue <- work
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
 	job.Results[result.WorkID] = result.Output
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func retryAbandonedWork() {
 	for range time.Tick(5 * time.Second) {
 		mu.Lock()
-		for key, assignment := range inProgress {
-			if time.Since(assignment.StartedAt) > 10*time.Minute {
+		for key, work := range inProgress {
+			if time.Now().After(work.LeaseUntil) {
 				delete(inProgress, key)
-				workQueue <- assignment.Work
+				workQueue <- work
 			}
 		}
 		mu.Unlock()
 	}
+}
+
+func newID() string {
+	b := make([]byte, 8)
+	rand.Read(b)
+	return hex.EncodeToString(b)
 }
 
 func writeJSON(w http.ResponseWriter, value any) {
